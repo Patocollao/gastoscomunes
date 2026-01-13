@@ -76,7 +76,7 @@ def obtener_datos_ciclo_actual(df):
 # --- 4. LÓGICA PRINCIPAL ---
 df_historico = cargar_datos()
 
-# Título centrado y limpio
+# Título centrado
 st.markdown("<h2 style='text-align: center;'>🏡 Gastos Compartidos</h2>", unsafe_allow_html=True)
 
 # --- FORMULARIO ---
@@ -84,12 +84,11 @@ with st.container():
     with st.form("entry_form_v2", clear_on_submit=True):
         c1, c2 = st.columns(2)
         quien = c1.selectbox("Pagado por", MIEMBROS)
-        monto = c2.number_input("Monto ($)", min_value=0, step=10)
+        monto = c2.number_input("Monto ($)", min_value=0.0, step=10.0)
         
         cat = st.selectbox("Categoría", CATEGORIAS)
         detalle = st.text_input("Detalle (Opcional)", placeholder="Ej. Sushi, Regalo...")
         
-        # Botón grande y ancho para fácil click en celular
         enviar = st.form_submit_button("💾 REGISTRAR GASTO", type="primary", use_container_width=True)
         
         if enviar and monto > 0:
@@ -117,9 +116,8 @@ if not df_ciclo.empty:
     st.markdown("<h4 style='text-align: center;'>📊 Balance Actual</h4>", unsafe_allow_html=True)
     
     gastos = df_ciclo.groupby("Pagado Por")["Monto"].sum()
-    for m in MIEMEMBROS: # Pequeño fix: usar la variable correcta si cambiaste algo, aquí uso MIEMBROS
-         if m not in gastos: gastos[m] = 0.0
-    # Corrección rápida: Asegúrate de usar 'MIEMBROS' definido arriba
+    
+    # --- CORRECCIÓN AQUÍ: Usamos la variable correcta 'MIEMBROS' ---
     for m in MIEMBROS: 
         if m not in gastos: gastos[m] = 0.0
 
@@ -131,7 +129,6 @@ if not df_ciclo.empty:
     
     diff = gastos[MIEMBROS[0]] - gastos[MIEMBROS[1]]
     
-    # Tarjetas de resultado visuales
     if diff > 0:
         st.warning(f"👉 **{MIEMBROS[1]}** debe pagar: **${diff/2:,.0f}**")
     elif diff < 0:
