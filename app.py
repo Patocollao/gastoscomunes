@@ -33,6 +33,7 @@ CATEGORIAS = [
     "📦 Costco",
     "🍽️ Restaurante",
     "🧽 Limpieza / Aseo",
+    "💸 ABONO / PAGO DEUDA", # <--- NUEVA CATEGORÍA ESPECIAL
     "✏️ Otro (Escribir manual)"
 ]
 
@@ -76,8 +77,8 @@ def obtener_datos_ciclo_actual(df):
 # --- 4. LÓGICA PRINCIPAL ---
 df_historico = cargar_datos()
 
-# Título centrado
-st.markdown("<h2 style='text-align: center;'>🏡 Gastos Compartidos</h2>", unsafe_allow_html=True)
+# Título
+st.markdown("<h2 style='text-align: center;'>🏡 Gastos & Pagos</h2>", unsafe_allow_html=True)
 
 # --- FORMULARIO ---
 with st.container():
@@ -87,13 +88,17 @@ with st.container():
         monto = c2.number_input("Monto ($)", min_value=0.0, step=10.0)
         
         cat = st.selectbox("Categoría", CATEGORIAS)
-        detalle = st.text_input("Detalle (Opcional)", placeholder="Ej. Sushi, Regalo...")
+        detalle = st.text_input("Detalle (Opcional)", placeholder="Ej. Sushi, o 'Transfiero lo del arriendo'")
         
-        enviar = st.form_submit_button("💾 REGISTRAR GASTO", type="primary", use_container_width=True)
+        enviar = st.form_submit_button("💾 REGISTRAR", type="primary", use_container_width=True)
         
         if enviar and monto > 0:
+            # Lógica del concepto
             if cat == "✏️ Otro (Escribir manual)":
                 concepto_final = detalle if detalle else "Varios"
+            elif cat == "💸 ABONO / PAGO DEUDA":
+                 # Si es un abono, lo marcamos claro
+                 concepto_final = f"💸 PAGO A COMPAÑERO ({detalle})" if detalle else "💸 PAGO DEUDA"
             else:
                 concepto_final = f"{cat} ({detalle})" if detalle else cat
                 
@@ -105,47 +110,99 @@ with st.container():
             
             df_historico = pd.concat([df_historico, nuevo], ignore_index=True)
             guardar_datos(df_historico)
-            st.success("✅ ¡Guardado!")
+            st.success("✅ ¡Registrado!")
             st.rerun()
 
-# --- BALANCE ---
+# --- BALANCE INTELIGENTE (LA MAGIA ESTÁ AQUÍ) ---
 st.markdown("---")
 df_ciclo = obtener_datos_ciclo_actual(df_historico)
 
 if not df_ciclo.empty:
-    st.markdown("<h4 style='text-align: center;'>📊 Balance Actual</h4>", unsafe_allow_html=True)
+    st.markdown("<h4 style='text-align: center;'>📊 Estado de Cuentas</h4>", unsafe_allow_html=True)
     
-    gastos = df_ciclo.groupby("Pagado Por")["Monto"].sum()
+    # 1. Separamos Gastos Reales de los Abonos entre compañeros
+    # Identificamos los abonos por el icono de billete volador 💸
+    mask_abono = df_ciclo["Concepto"].str.contains("💸", na=False)
     
-    # --- CORRECCIÓN AQUÍ: Usamos la variable correcta 'MIEMBROS' ---
+    df_gastos_reales = df_ciclo[~mask_abono] # Gastos de la casa (Super, Luz, etc)
+    df_abonos = df_ciclo[mask_abono]         # Pagos entre Patricio y Sergio
+    
+    # 2. Calculamos DEUDA TOTAL (Basado solo en gastos reales)
+    total_gastado = df_gastos_reales["Monto"].sum()
+    cuota_individual = total_gastado / 2
+    
+    gastos_por_persona = df_gastos_reales.groupby("Pagado Por")["Monto"].sum()
     for m in MIEMBROS: 
-        if m not in gastos: gastos[m] = 0.0
-
-    total = df_ciclo["Monto"].sum()
+        if m not in gastos_por_persona: gastos_por_persona[m] = 0.0
+        
+    # Diferencia original (Quién gastó más en la casa)
+    p1, p2 = MIEMBROS[0], MIEMBROS[1] # Patricio, Sergio
+    diff_original = gastos_por_persona[p1] - gastos_por_persona[p2]
+    
+    # 3. Calculamos ABONOS (Pagos ya realizados)
+    abonos_por_persona = df_abonos.groupby("Pagado Por")["Monto"].sum()
+    for m in MIEMBROS:
+        if m not in abonos_por_persona: abonos_por_persona[m] = 0.0
+        
+    # Ajustamos la deuda con los abonos
+    # Si Patricio gastó más (diff > 0), Sergio le debe. 
+    # Pero si Sergio hizo abonos, restamos eso de su deuda.
     
     c1, c2 = st.columns(2)
-    c1.metric("Total", f"${total:,.0f}")
-    c2.metric("Mitad", f"${total/2:,.0f}")
+    c1.metric("Gasto Total Casa", f"${total_gastado:,.0f}")
+    c2.metric("Mitad Exacta", f"${cuota_individual:,.0f}")
     
-    diff = gastos[MIEMBROS[0]] - gastos[MIEMBROS[1]]
+    st.write(f"🔹 **{p1}** gastó en cosas: ${gastos_por_persona[p1]:,.0f}")
+    st.write(f"🔹 **{p2}** gastó en cosas: ${gastos_por_persona[p2]:,.0f}")
     
-    if diff > 0:
-        st.warning(f"👉 **{MIEMBROS[1]}** debe pagar: **${diff/2:,.0f}**")
-    elif diff < 0:
-        st.warning(f"👉 **{MIEMBROS[0]}** debe pagar: **${abs(diff)/2:,.0f}**")
+    # Mostrar si hubo abonos
+    if not df_abonos.empty:
+        st.info(f"💸 Hubo pagos entre ustedes: {p1} abonó ${abonos_por_persona[p1]:,.0f} | {p2} abonó ${abonos_por_persona[p2]:,.0f}")
+
+    # Lógica Final de Quién debe a Quién
+    # (Lo que gastó P1 - Lo que gastó P2) - (Lo que abonó P1 - Lo que abonó P2)
+    # Explicación: Si P1 gastó mucho, saldo positivo. Si P2 le transfirió (Abono P2), reduce el saldo.
+    saldo_final = (gastos_por_persona[p1] - gastos_por_persona[p2]) + (abonos_por_persona[p1] - abonos_por_persona[p2])
+    
+    st.markdown("---")
+    if saldo_final > 0:
+        # Saldo a favor de P1 -> P2 debe pagar
+        deuda = saldo_final / 2
+        st.error(f"👉 **{p2}** le debe a **{p1}**: ${deuda:,.2f}")
+    elif saldo_final < 0:
+        # Saldo a favor de P2 -> P1 debe pagar
+        deuda = abs(saldo_final) / 2
+        st.error(f"👉 **{p1}** le debe a **{p2}**: ${deuda:,.2f}")
     else:
-        st.success("✅ ¡Cuentas saldadas!")
-        
-    with st.expander("Ver lista de gastos"):
+        st.success("✅ ¡Cuentas saldadas perfectamente!")
+
+    # Tabla detallada
+    with st.expander("Ver detalle de movimientos"):
         st.dataframe(df_ciclo[["Fecha", "Pagado Por", "Concepto", "Monto"]], use_container_width=True)
 
-    if st.button("🤝 Cerrar Ciclo (Todo Pagado)", use_container_width=True):
-        cierre = pd.DataFrame([{
-            "Fecha": datetime.date.today(), "Pagado Por": "SISTEMA",
+    # --- BOTÓN DE CIERRE CON RESUMEN ---
+    if st.button("🤝 Cerrar Ciclo y Guardar Resumen", use_container_width=True):
+        fecha_hoy = datetime.date.today().strftime("%Y-%m-%d")
+        
+        # Creamos 3 filas de resumen para que quede en el Excel
+        fila_resumen_1 = pd.DataFrame([{
+            "Fecha": fecha_hoy, "Pagado Por": "SISTEMA",
+            "Concepto": f"📊 TOTAL CICLO: ${total_gastado:,.2f}", "Monto": 0
+        }])
+        fila_resumen_2 = pd.DataFrame([{
+            "Fecha": fecha_hoy, "Pagado Por": "SISTEMA",
+            "Concepto": f"💰 CUOTA INDIVIDUAL: ${cuota_individual:,.2f}", "Monto": 0
+        }])
+        fila_cierre = pd.DataFrame([{
+            "Fecha": fecha_hoy, "Pagado Por": "SISTEMA",
             "Concepto": "⛔ CIERRE DE CICLO ⛔", "Monto": 0
         }])
-        guardar_datos(pd.concat([df_historico, cierre], ignore_index=True))
+        
+        # Concatenamos todo
+        df_final = pd.concat([df_historico, fila_resumen_1, fila_resumen_2, fila_cierre], ignore_index=True)
+        guardar_datos(df_final)
+        
         st.balloons()
         st.rerun()
 else:
-    st.info("Todo al día. No hay gastos pendientes.")
+    st.info("Comenzando nuevo ciclo. No hay movimientos aún.")
