@@ -28,14 +28,10 @@ def obtener_datos_ciclo_actual(df):
     return df
 
 # Cargar datos EN VIVO desde Google
-try:
-    df_historico = cargar_datos()
-    # Aseguramos que los tipos de datos sean correctos para evitar errores
-    df_historico = df_historico.dropna(how="all") # Limpiar filas vacías si las hay
-    df_historico["Monto"] = pd.to_numeric(df_historico["Monto"], errors='coerce').fillna(0)
-except Exception as e:
-    st.error("Error conectando con Google Sheets. Revisa los 'Secrets'.")
-    st.stop()
+# --- VERSIÓN DE PRUEBA (SIN PROTECCIÓN DE ERRORES) ---
+df_historico = cargar_datos()
+df_historico = df_historico.dropna(how="all")
+df_historico["Monto"] = pd.to_numeric(df_historico["Monto"], errors='coerce').fillna(0)
 
 # --- INTERFAZ ---
 st.title("☁️ Gastos Compartidos")
