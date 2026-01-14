@@ -83,6 +83,11 @@ st.markdown("<h2 style='text-align: center;'>🏡 Gastos & Pagos</h2>", unsafe_a
 # --- FORMULARIO ---
 with st.container():
     with st.form("entry_form_v2", clear_on_submit=True):
+        
+        # --- NUEVO: SELECTOR DE FECHA ---
+        # Por defecto muestra "hoy", pero puedes cambiarlo
+        fecha_elegida = st.date_input("Fecha del Gasto", value=datetime.date.today())
+        
         c1, c2 = st.columns(2)
         quien = c1.selectbox("Pagado por", MIEMBROS)
         monto = c2.number_input("Monto ($)", min_value=0.0, step=10.0)
@@ -99,10 +104,12 @@ with st.container():
                  concepto_final = f"💸 PAGO A COMPAÑERO ({detalle})" if detalle else "💸 PAGO DEUDA"
             else:
                 concepto_final = f"{cat} ({detalle})" if detalle else cat
-                
-            fecha = datetime.date.today().strftime("%Y-%m-%d")
+            
+            # Convertimos la fecha elegida a texto para guardarla
+            fecha_str = fecha_elegida.strftime("%Y-%m-%d")
+            
             nuevo = pd.DataFrame([{
-                "Fecha": fecha, "Pagado Por": quien, 
+                "Fecha": fecha_str, "Pagado Por": quien, 
                 "Concepto": concepto_final, "Monto": monto
             }])
             
@@ -139,7 +146,6 @@ if not df_ciclo.empty:
         if m not in abonos_por_persona: abonos_por_persona[m] = 0.0
         
     # 4. Cálculo Maestro de Deuda Final
-    # (Gastos P1 - Gastos P2) + (Abonos P1 - Abonos P2)
     saldo_final = (gastos_por_persona[p1] - gastos_por_persona[p2]) + (abonos_por_persona[p1] - abonos_por_persona[p2])
     
     # Métricas Visuales
@@ -152,7 +158,6 @@ if not df_ciclo.empty:
     
     st.markdown("---")
     
-    # Variable para guardar el mensaje de texto de la deuda
     mensaje_deuda_final = ""
     
     if saldo_final > 0:
@@ -174,31 +179,26 @@ if not df_ciclo.empty:
     if st.button("🤝 Cerrar Ciclo y Guardar Resumen", use_container_width=True):
         fecha_hoy = datetime.date.today().strftime("%Y-%m-%d")
         
-        # 1. Fila con el Total
         fila_total = pd.DataFrame([{
             "Fecha": fecha_hoy, "Pagado Por": "SISTEMA",
             "Concepto": f"📊 TOTAL CICLO: ${total_gastado:,.2f}", "Monto": 0
         }])
         
-        # 2. Fila con la Cuota
         fila_cuota = pd.DataFrame([{
             "Fecha": fecha_hoy, "Pagado Por": "SISTEMA",
             "Concepto": f"💰 CUOTA INDIVIDUAL: ${cuota_individual:,.2f}", "Monto": 0
         }])
         
-        # 3. Fila con la DEUDA FINAL (Lo que pediste)
         fila_deuda = pd.DataFrame([{
             "Fecha": fecha_hoy, "Pagado Por": "SISTEMA",
             "Concepto": f"⚖️ SALDO FINAL: {mensaje_deuda_final}", "Monto": 0
         }])
         
-        # 4. Fila de Cierre
         fila_cierre = pd.DataFrame([{
             "Fecha": fecha_hoy, "Pagado Por": "SISTEMA",
             "Concepto": "⛔ CIERRE DE CICLO ⛔", "Monto": 0
         }])
         
-        # Concatenamos todo en orden
         df_final = pd.concat([df_historico, fila_total, fila_cuota, fila_deuda, fila_cierre], ignore_index=True)
         guardar_datos(df_final)
         
